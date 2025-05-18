@@ -1,5 +1,5 @@
 use gasless::{mine_free_gas};
-use alloy_primitives::{Address, U256, hex};
+use alloy_primitives::{Address, hex};
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 
@@ -35,7 +35,7 @@ pub extern "C" fn mine_gas_c(gas_amount: u32, address: *const c_char, nonce: u32
 pub extern "C" fn free_cstring(s: *mut c_char) {
     if !s.is_null() {
         unsafe {
-            CString::from_raw(s);
+            let _ = CString::from_raw(s);
         }
     }
 }
