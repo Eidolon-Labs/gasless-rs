@@ -6,285 +6,64 @@ on:
   workflow_dispatch: # Allow manual triggering
 
 jobs:
-  build-native:
-    name: Build C# native for ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+  build:
+    name: Build Rust + WASM artifacts
+    runs-on: ubuntu-latest
     strategy:
-      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        include:
-          - os: ubuntu-latest
-            platform: linux-x64
-            rid: linux-x64
-            extension: .so
-            target: x86_64-unknown-linux-gnu
-          - os: windows-latest
-            platform: win-x64
-            rid: win-x64
-            extension: .dll
-            target: x86_64-pc-windows-msvc
-          - os: macos-latest
-            platform: osx-x64
-            rid: osx-x64
-            extension: .dylib
-            target: x86_64-apple-darwin
+        target:
+          - x86_64-unknown-linux-gnu
+          - x86_64-pc-windows-gnu
+          - x86_64-apple-darwin
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v3
-        with:
-          dotnet-version: '6.0.x' # or '8.0.x' for .NET 8
-          
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-          targets: ${{ matrix.target }}
-          
-      - name: Install system dependencies (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential
-          
-      - name: Install system dependencies (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          xcode-select --install || true
-          
-      - name: Build Rust library
-        working-directory: ./csharp-binding
-        run: |
-          cargo build --release --target ${{ matrix.target }}
-          
-      - name: Create platform directory
-        run: |
-          mkdir -p csharp-binding/runtimes/${{ matrix.rid }}/native
-          
-      - name: Copy native library
-        shell: bash
-        run: |
-          cd csharp-binding
-          
-          # Find and copy the built library
-          if [ -f "target/${{ matrix.target }}/release/libcsharp_binding${{ matrix.extension }}" ]; then
-            cp "target/${{ matrix.target }}/release/libcsharp_binding${{ matrix.extension }}" "runtimes/${{ matrix.rid }}/native/"
-            echo "Found library at target/${{ matrix.target }}/release/libcsharp_binding${{ matrix.extension }}"
-          elif [ -f "target/${{ matrix.target }}/release/csharp_binding${{ matrix.extension }}" ]; then
-            cp "target/${{ matrix.target }}/release/csharp_binding${{ matrix.extension }}" "runtimes/${{ matrix.rid }}/native/"
-            echo "Found library at target/${{ matrix.target }}/release/csharp_binding${{ matrix.extension }}"
-          else
-            echo "Could not find native library"
-            echo "Searching for library files:"
-            find target/${{ matrix.target }}/release -name "*${{ matrix.extension }}" -type f
-            exit 1
-          fi
-          
-      - name: Upload native library
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.platform }}-native
-          path: csharp-binding/runtimes/${{ matrix.rid }}/native/
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Build native lib for target
+        run: cargo build --release --target ${{ matrix.target }}
 
   build-wasm:
-    name: Build C# WASM
+    name: Build WASM
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v3
-        with:
-          dotnet-version: '6.0.x'
-          
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-          targets: wasm32-unknown-unknown
-          
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Install wasm-pack
-        run: |
-          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-          
-      - name: Build WASM package
-        working-directory: ./gasless
-        run: |
-          wasm-pack build --target web --out-dir ../csharp-binding/wwwroot/wasm
-          
-      - name: Create WASM directory structure
-        run: |
-          mkdir -p csharp-binding/wwwroot/wasm
-          # Copy generated files if they're in a different location
-          if [ -d "gasless/pkg" ]; then
-            cp -r gasless/pkg/* csharp-binding/wwwroot/wasm/ || true
-          fi
-          
-      - name: Upload WASM files
+        run: cargo install wasm-pack
+
+      - name: Build WASM with wasm-pack
+        run: wasm-pack build --release --target web ./csharp-binding
+
+      - name: Upload WASM artifact
         uses: actions/upload-artifact@v4
         with:
-          name: wasm-files
-          path: csharp-binding/wwwroot/wasm/
+          name: wasm
+          path: ./pkg/*.wasm
 
-  build-package:
-    name: Build C# Package
-    needs: [build-native, build-wasm]
+  package:
+    name: Package artifacts
+    needs: [build, build-wasm]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v3
-        with:
-          dotnet-version: '6.0.x'
-          
-      - name: Download all native libraries
+      - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
-          
-      - name: Organize native libraries
-        run: |
-          cd csharp-binding
-          
-          # Create runtime directories
-          mkdir -p runtimes/linux-x64/native
-          mkdir -p runtimes/win-x64/native
-          mkdir -p runtimes/osx-x64/native
-          mkdir -p wwwroot/wasm
-          
-          # Move native libraries to the appropriate runtime directories
-          cp ../artifacts/linux-x64-native/* runtimes/linux-x64/native/ || echo "No Linux native library found"
-          cp ../artifacts/win-x64-native/* runtimes/win-x64/native/ || echo "No Windows native library found"
-          cp ../artifacts/osx-x64-native/* runtimes/osx-x64/native/ || echo "No macOS native library found"
-          cp ../artifacts/wasm-files/* wwwroot/wasm/ || echo "No WASM files found"
-          
-          # List final structure
-          echo "Final package structure:"
-          find runtimes -type f
-          find wwwroot -type f || true
-          
-      - name: Restore dependencies
-        working-directory: ./csharp-binding
-        run: dotnet restore
-        
-      - name: Build C# project
-        working-directory: ./csharp-binding
-        run: dotnet build --configuration Release --no-restore
-        
-      - name: Pack NuGet package
-        working-directory: ./csharp-binding
-        run: dotnet pack --configuration Release --no-build --output ./nupkg
-        
-      - name: Upload NuGet package
-        uses: actions/upload-artifact@v4
-        with:
-          name: nuget-package
-          path: csharp-binding/nupkg/*.nupkg
+          path: ./artifacts
 
-  release:
-    name: Create GitHub Release
-    needs: build-package
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/csharp-v')
-    steps:
-      - name: Download NuGet package
-        uses: actions/download-artifact@v4
-        with:
-          name: nuget-package
-          path: ./packages
-          
-      - name: Download native libraries
-        uses: actions/download-artifact@v4
-        with:
-          path: ./native-libs
-          
-      - name: Create release archives
+      - name: Find relevant artifacts
         run: |
-          # Create archives for each platform
-          cd native-libs
-          zip -r ../csharp-linux-x64.zip linux-x64-native/
-          zip -r ../csharp-win-x64.zip win-x64-native/
-          zip -r ../csharp-osx-x64.zip osx-x64-native/
-          zip -r ../csharp-wasm.zip wasm-files/
-          
-      - name: Create GitHub Release
-        uses: actions/create-release@v1
-        id: create_release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          mkdir -p release
+          find target -type f \( -name "*.so" -o -name "*.dylib" -o -name "*.dll" \) -exec cp {} release/ \;
+          find ./artifacts -type f -name "*.wasm" -exec cp {} release/ \;
+
+      - name: Upload for release
+        uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
-          release_name: C# Bindings ${{ github.ref_name }}
-          draft: false
-          prerelease: false
-          body: |
-            ## C# Bindings Release ${{ github.ref_name }}
-            
-            This release contains:
-            - NuGet package (.nupkg) with all platforms included
-            - Individual platform-specific native libraries
-            - WebAssembly (WASM) files for web scenarios
-            
-            ### Installation
-            You can either:
-            1. Install the NuGet package locally: `dotnet add package ./YourProject.CoreLogic.*.nupkg`
-            2. Extract and use the platform-specific native libraries directly
-            
-            ### Platforms Supported
-            - Windows x64 (.dll)
-            - macOS x64 (.dylib) 
-            - Linux x64 (.so)
-            - WebAssembly (.wasm)
-            
-      - name: Upload NuGet Package
-        uses: actions/upload-release-asset@v1
+          files: release/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./packages/*.nupkg
-          asset_name: csharp-bindings-${{ github.ref_name }}.nupkg
-          asset_content_type: application/zip
-          
-      - name: Upload Linux x64 Archive
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./csharp-linux-x64.zip
-          asset_name: csharp-linux-x64-${{ github.ref_name }}.zip
-          asset_content_type: application/zip
-          
-      - name: Upload Windows x64 Archive
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./csharp-win-x64.zip
-          asset_name: csharp-win-x64-${{ github.ref_name }}.zip
-          asset_content_type: application/zip
-          
-      - name: Upload macOS x64 Archive
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./csharp-osx-x64.zip
-          asset_name: csharp-osx-x64-${{ github.ref_name }}.zip
-          asset_content_type: application/zip
-          
-      - name: Upload WASM Archive
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./csharp-wasm.zip
-          asset_name: csharp-wasm-${{ github.ref_name }}.zip
-          asset_content_type: application/zip
