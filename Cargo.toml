@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
-  "core-logic",
+  "gasless",
   "js-binding",
   "csharp-binding"
 ]

@@ -112,7 +112,7 @@ jobs:
           curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
           
       - name: Build WASM package
-        working-directory: ./core-logic
+        working-directory: ./gasless
         run: |
           wasm-pack build --target nodejs --out-dir ../js-binding/dist/wasm
           
@@ -120,8 +120,8 @@ jobs:
         run: |
           mkdir -p js-binding/dist/wasm
           # Copy generated files if they're in a different location
-          if [ -d "core-logic/pkg" ]; then
-            cp -r core-logic/pkg/* js-binding/dist/wasm/ || true
+          if [ -d "gasless/pkg" ]; then
+            cp -r gasless/pkg/* js-binding/dist/wasm/ || true
           fi
           
       - name: Upload WASM binary

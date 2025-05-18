@@ -22,14 +22,14 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Build native release (core-logic)
-        run: cargo build --release -p core-logic
+      - name: Build native release (gasless)
+        run: cargo build --release -p gasless
 
       - name: Upload native binary
         uses: actions/upload-artifact@v4
         with:
           name: rust-native-${{ matrix.os }}
-          path: core-logic/target/release/
+          path: gasless/target/release/
 
   build-wasm:
     name: Build wasm binary
@@ -47,14 +47,14 @@ jobs:
       - name: Install wasm target
         run: rustup target add wasm32-unknown-unknown
 
-      - name: Build wasm release (core-logic)
-        run: cargo build --release --target wasm32-unknown-unknown -p core-logic
+      - name: Build wasm release (gasless)
+        run: cargo build --release --target wasm32-unknown-unknown -p gasless
 
       - name: Upload wasm binary
         uses: actions/upload-artifact@v4
         with:
           name: rust-wasm-binary
-          path: core-logic/target/wasm32-unknown-unknown/release/
+          path: gasless/target/wasm32-unknown-unknown/release/
 
   publish-rust:
     name: Publish Rust Crate
@@ -69,6 +69,6 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Publish core-logic crate
-        working-directory: core-logic
+      - name: Publish gasless crate
+        working-directory: gasless
         run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
