@@ -65,10 +65,12 @@ jobs:
         with:
           path: ./artifacts
 
-      - name: Find relevant artifacts
+      - name: Find relevant artifacts and copy
         run: |
           mkdir -p release
-          find target -type f \( -name "*.so" -o -name "*.dylib" -o -name "*.dll" \) -exec cp {} release/ \;
+          # copy native shared libs from each OS artifact folder
+          find ./artifacts -type f \( -name "*.so" -o -name "*.dylib" -o -name "*.dll" \) -exec cp {} release/ \;
+          # copy wasm binaries
           find ./artifacts -type f -name "*.wasm" -exec cp {} release/ \;
 
       - name: Upload for release
