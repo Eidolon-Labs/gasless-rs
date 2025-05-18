@@ -31,7 +31,7 @@ jobs:
           name: rust-native-${{ matrix.os }}
           path: gasless/target/release/
 
-build-wasm:
+  build-wasm:
     name: Build wasm binary
     runs-on: ubuntu-latest
     needs: build-native
@@ -55,8 +55,7 @@ build-wasm:
         with:
           name: rust-wasm-binary
           path: target/wasm32-unknown-unknown/release/
-
-  package:
+  pkg-build:
     name: Package artifacts
     needs: [build-native, build-wasm]
     runs-on: ubuntu-latest
