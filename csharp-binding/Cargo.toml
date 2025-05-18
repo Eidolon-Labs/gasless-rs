@@ -1,0 +1,10 @@
+[package]
+name = "csharp-binding"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+gasless = { path = "../core-logic" }
+alloy-primitives = "1.1.0"
