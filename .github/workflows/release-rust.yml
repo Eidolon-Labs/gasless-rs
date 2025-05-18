@@ -4,43 +4,71 @@ on:
   push:
     tags:
       - 'v*'  # Trigger on version tags
-  workflow_dispatch:  # Allow manual triggering
+  workflow_dispatch:
 
 jobs:
-  build-rust:
-    name: Build Rust Crate
-    runs-on: ubuntu-latest # You can change this to build on other platforms if needed
+  build-native:
+    name: Build native binaries for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
     steps:
       - uses: actions/checkout@v4
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-      - name: Build Rust crate (release)
-        run: |
-          cargo build --release
-      - name: Upload Rust binary
+
+      - name: Build native release (core-logic)
+        run: cargo build --release -p core-logic
+
+      - name: Upload native binary
         uses: actions/upload-artifact@v4
         with:
-          name: rust-binary
-          path: target/release/ # Changed to just target/release
+          name: rust-native-${{ matrix.os }}
+          path: core-logic/target/release/
+
+  build-wasm:
+    name: Build wasm binary
+    runs-on: ubuntu-latest
+    needs: build-native
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Install wasm target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Build wasm release (core-logic)
+        run: cargo build --release --target wasm32-unknown-unknown -p core-logic
+
+      - name: Upload wasm binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-wasm-binary
+          path: core-logic/target/wasm32-unknown-unknown/release/
 
   publish-rust:
     name: Publish Rust Crate
-    needs: build-rust
+    needs: [build-native, build-wasm]
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-      - name: Download Rust binary
-        uses: actions/download-artifact@v4
-        with:
-          name: rust-binary
-          path: target/release/
-      - name: Publish Rust crate
-        run: |
-          echo "Publishing Rust crate..."
-          cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+      - name: Publish core-logic crate
+        working-directory: core-logic
+        run: cargo publish --token ${{ secrets.CARGO_REGISTRY_TOKEN }}
