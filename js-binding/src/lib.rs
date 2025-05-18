@@ -28,6 +28,8 @@ struct MiningOutput {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Instant;
+
     use super::*;
     
     #[tokio::test]

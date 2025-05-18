@@ -1,6 +1,6 @@
 [package]
 name = "gasless"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 authors = ["Sawyer Cutler <sawyer@dirtroa.dev>", "Manuel Barbas"]
 description = "Gasless Transactions in Rust for SKALE Network"
@@ -11,7 +11,7 @@ license = "MIT"
 keywords = ["blockchain", "skale", "evm", "gasless", "eidolon"]
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 alloy-primitives = "1.1.0"
