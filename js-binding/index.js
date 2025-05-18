@@ -40,8 +40,8 @@ class ModuleLoader {
         const wasmPath = path.join(__dirname, 'dist', 'wasm');
         
         // Check if WASM files exist
-        const wasmJsPath = path.join(wasmPath, 'libgasless.js'); // Replace with actual name
-        const wasmFilePath = path.join(wasmPath, 'libgasless.wasm'); // Replace with actual name
+        const wasmJsPath = path.join(wasmPath, 'gasless.js'); // Replace with actual name
+        const wasmFilePath = path.join(wasmPath, 'gasless_bg.wasm'); // Replace with actual name
         
         if (!fs.existsSync(wasmJsPath) || !fs.existsSync(wasmFilePath)) {
             throw new Error('WASM files not found');
