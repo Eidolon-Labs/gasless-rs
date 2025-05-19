@@ -64,7 +64,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: ./artifacts
-
       - name: Find relevant artifacts and copy
         run: |
           mkdir -p release
@@ -72,11 +71,17 @@ jobs:
           find ./artifacts -type f \( -name "*.so" -o -name "*.dylib" -o -name "*.dll" \) -exec cp {} release/ \;
           # copy wasm binaries
           find ./artifacts -type f -name "*.wasm" -exec cp {} release/ \;
-
+          # Debug: show what we're uploading
+          echo "Files to upload:"
+          ls -la release/
+          du -sh release/*
       - name: Upload for release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           files: release/*
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
         env:
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
