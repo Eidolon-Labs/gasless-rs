@@ -1,13 +1,12 @@
-name: Buld and Publish NPM Package
-
+name: Build and Publish NPM Package
 on:
   push:
     tags:
-      - 'v*'  # Trigger on version tags
-  workflow_dispatch:  # Allow manual triggering
+      - 'v*' # Trigger on version tags
+  workflow_dispatch: # Allow manual triggering
 
 jobs:
-  build:
+  build-native:
     name: Build for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -21,90 +20,160 @@ jobs:
             platform: win32
           - os: macos-latest
             platform: darwin
-    
     steps:
-      - uses: actions/checkout@v4 # Updated to v4
+      - uses: actions/checkout@v4
       
       - name: Setup Node.js
-        uses: actions/setup-node@v4 # Updated to v4
+        uses: actions/setup-node@v4
         with:
-          node-version: '16.x'
-      
+          node-version: '18.x' # Updated to a more recent LTS version
+          
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-      
+          
       - name: Install node-bindgen CLI
         run: cargo install nj-cli
-      
-      - name: Install dependencies
-        run: npm ci || npm install
         
-      - name: Install dependencies (Linux)
+      - name: Install system dependencies (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libnode-dev
-      
+          sudo apt-get install -y build-essential
+          
+      - name: Install system dependencies (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          # Ensure Xcode command line tools are installed
+          xcode-select --install || true
+          
+      - name: Change to js-binding directory
+        run: cd js-binding
+        
+      - name: Install npm dependencies
+        working-directory: ./js-binding
+        run: npm ci || npm install
+        
       - name: Build with node-bindgen
+        working-directory: ./js-binding
         run: nj-cli build --release
-      
+        
       - name: Create platform directory
         run: |
-          mkdir -p dist/${{ matrix.platform }}
-          # Copy the built binary to the platform-specific directory
+          mkdir -p js-binding/dist/${{ matrix.platform }}
+          
+      - name: Copy binary to platform directory
+        shell: bash
+        run: |
+          cd js-binding
+          # Look for the built binary in common locations
           if [ -f "dist/index.node" ]; then
             cp dist/index.node dist/${{ matrix.platform }}/
+            echo "Found binary at dist/index.node"
           elif [ -f "native/index.node" ]; then
             cp native/index.node dist/${{ matrix.platform }}/
+            echo "Found binary at native/index.node"
+          elif [ -f "target/release/index.node" ]; then
+            cp target/release/index.node dist/${{ matrix.platform }}/
+            echo "Found binary at target/release/index.node"
           else
             echo "Could not find .node file"
-            find . -name "*.node"
+            echo "Searching for .node files:"
+            find . -name "*.node" -type f
             exit 1
           fi
-        shell: bash
-      
+          
       - name: Upload binary
-        uses: actions/upload-artifact@v4 # Updated to v4
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform }}-binary
-          path: dist/${{ matrix.platform }}/
+          path: js-binding/dist/${{ matrix.platform }}/
+
+  build-wasm:
+    name: Build WASM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+          
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+          
+      - name: Install wasm-pack
+        run: |
+          curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+          
+      - name: Build WASM package
+        working-directory: ./gasless
+        run: |
+          wasm-pack build --target nodejs --out-dir ../js-binding/dist/wasm
+          
+      - name: Create WASM directory structure
+        run: |
+          mkdir -p js-binding/dist/wasm
+          # Copy generated files if they're in a different location
+          if [ -d "gasless/pkg" ]; then
+            cp -r gasless/pkg/* js-binding/dist/wasm/ || true
+          fi
+          
+      - name: Upload WASM binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-binary
+          path: js-binding/dist/wasm/
 
   publish:
     name: Publish Package
-    needs: build
+    needs: [build-native, build-wasm]
     runs-on: ubuntu-latest
-    
     steps:
-      - uses: actions/checkout@v4 # Updated to v4
+      - uses: actions/checkout@v4
       
       - name: Setup Node.js
-        uses: actions/setup-node@v4 # Updated to v4
+        uses: actions/setup-node@v4
         with:
-          node-version: '16.x'
+          node-version: '18.x'
           registry-url: 'https://registry.npmjs.org'
-      
+          
       - name: Download all platform binaries
-        uses: actions/download-artifact@v4 # Updated to v4
+        uses: actions/download-artifact@v4
         with:
-          path: dist
-      
+          path: artifacts
+          
       - name: Organize binaries
         run: |
-          # Move files from the artifact directories to the appropriate platform directories
+          cd js-binding
+          
+          # Create platform directories
           mkdir -p dist/linux
           mkdir -p dist/win32
           mkdir -p dist/darwin
+          mkdir -p dist/wasm
           
-          cp -r dist/linux-binary/* dist/linux/ || echo "No Linux binary found"
-          cp -r dist/win32-binary/* dist/win32/ || echo "No Windows binary found"
-          cp -r dist/darwin-binary/* dist/darwin/ || echo "No macOS binary found"
+          # Move files from the artifact directories to the appropriate platform directories
+          cp -r ../artifacts/linux-binary/* dist/linux/ || echo "No Linux binary found"
+          cp -r ../artifacts/win32-binary/* dist/win32/ || echo "No Windows binary found"
+          cp -r ../artifacts/darwin-binary/* dist/darwin/ || echo "No macOS binary found"
+          cp -r ../artifacts/wasm-binary/* dist/wasm/ || echo "No WASM binary found"
           
           # List final structure
+          echo "Final dist structure:"
           find dist -type f
-      
+          
+      - name: Install dependencies for publishing
+        working-directory: ./js-binding
+        run: npm ci || npm install
+        
       - name: Publish to NPM
+        working-directory: ./js-binding
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

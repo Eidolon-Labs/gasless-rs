@@ -1,0 +1,93 @@
+name: Build and Publish C# Package
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger on version tags
+      - 'cs*'
+  workflow_dispatch: # Allow manual triggering
+
+  # Add permissions at the workflow level
+permissions:
+  contents: write  # Required for creating releases and uploading assets
+  actions: read    # Required for downloading artifacts
+
+jobs:
+  build-native:
+    name: Build native binaries for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Build native release (gasless)
+        run: cargo build --release -p gasless
+
+      - name: Upload native binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-native-${{ matrix.os }}
+          path: target/release/
+
+  build-wasm:
+    name: Build wasm binary
+    runs-on: ubuntu-latest
+    needs: build-native
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Install wasm target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Build wasm release (gasless)
+        run: cargo build --release --target wasm32-unknown-unknown -p gasless
+
+      - name: Upload wasm binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-wasm-binary
+          path: target/wasm32-unknown-unknown/release/
+  pkg-build:
+    name: Package artifacts
+    needs: [build-native, build-wasm]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+      - name: Find relevant artifacts and copy
+        run: |
+          mkdir -p release
+          # copy native shared libs from each OS artifact folder
+          find ./artifacts -type f \( -name "*.so" -o -name "*.dylib" -o -name "*.dll" \) -exec cp {} release/ \;
+          # copy wasm binaries
+          find ./artifacts -type f -name "*.wasm" -exec cp {} release/ \;
+          # Debug: show what we're uploading
+          echo "Files to upload:"
+          ls -la release/
+          du -sh release/*
+      - name: Upload for release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: release/*
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

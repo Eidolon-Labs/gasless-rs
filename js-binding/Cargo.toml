@@ -1,0 +1,15 @@
+[package]
+name = "js-binding"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+gasless = { path = "../gasless" }
+node-bindgen = { version = "6.1.0", features = ["default"] }
+alloy-primitives = "1.1.0"
+tokio = { version = "1.44.2", features = ["macros", "rt-multi-thread"]}
+
+[build-dependencies]
+node-bindgen = { version = "6.1.0", default-features = false, features = ["build"] }

@@ -1,0 +1,21 @@
+[package]
+name = "gasless"
+version = "0.1.2"
+edition = "2024"
+authors = ["Sawyer Cutler <sawyer@dirtroa.dev>", "Manuel Barbas"]
+description = "Gasless Transactions in Rust for SKALE Network"
+readme = "README.md"
+homepage = "https://eidolon.gg"
+repository = "https://github.com/Eidolon-Labs/gasless-rs"
+license = "MIT"
+keywords = ["blockchain", "skale", "evm", "gasless", "eidolon"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+alloy-primitives = "1.1.0"
+alloy-sol-types = "1.1.0"
+sha3 = "0.10.8"
+rand = "0.8.5"
+getrandom = { version = "0.2.16", features = ["js"] }
